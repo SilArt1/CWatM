@@ -49,6 +49,7 @@ def valuecell( coordx, coordstr, returnmap = True):
             msg = "Error 101: Gauges in settings file: " + xy + " in " + coordstr + " is not a coordinate"
             raise CWATMError(msg)
 
+
     null = np.zeros((maskmapAttr['row'], maskmapAttr['col']))
     null[null == 0] = -9999
 
@@ -151,15 +152,17 @@ def loadsetclone(self,name):
         filename = os.path.splitext(cbinding(name))[0] + '.nc'
         try:
             nf1 = Dataset(filename, 'r')
-            #y, x, cell, invcell, rows, cols = readCoordNetCDF(filename)
-            #setmaskmapAttr(x, y, cols, rows, cell)
-
             value = list(nf1.variables.items())[-1][0]  # get the last variable name
 
             x1 = list(nf1.variables.values())[0][0]
             x2 = list(nf1.variables.values())[0][1]
             xlast = list(nf1.variables.values())[0][-1]
+            #x1 = nf1.variables['lon'][0]
+            #x2 = nf1.variables['lon'][1]
+            #xlast = nf1.variables['lon'][-1]
 
+            #y1 = nf1.variables['lat'][0]
+            #ylast = nf1.variables['lat'][-1]
             y1 = list(nf1.variables.values())[1][0]
             ylast = list(nf1.variables.values())[1][-1]
 
@@ -902,8 +905,7 @@ def multinetdf(meteomaps, startcheck = 'dateBegin'):
                     start = num2date(startint * datediv, units=nctime.units, calendar=nctime.calendar)
 
                     # counter is set to a minus value - for some maps (e.g. glacier) if the counter is negativ
-                    # the doy of a year of first year is loaded -> to use runs  before glacier maps are calculated
-
+                    # the doy of a year of first year is loaded -> to use runs  before glacier maps are calculated            else:
             else:
                 if (datestartint >= startint) and (datestartint < endint ):
                     startfile += 1
@@ -947,6 +949,7 @@ def readmeteodata(name, date, value='None', addZeros = False, zeros = 0.0,mapssc
         date1 = "%02d/%02d/%02d" % (date.day, date.month, date.year)
         msg = "Error 210: Netcdf map error for: " + name + " -> " + cbinding(name) + " on: " + date1 + ": \n"
         raise CWATMError(msg)
+
 
     # for glaciermaps extend back into past if glaciermaps start later -> use day of the year of first year
     if idx < 0:
@@ -1172,6 +1175,9 @@ def readnetcdf2(namebinding, date, useDaily='daily', value='None', addZeros = Fa
         if cutcheckmask == cutcheckmap: cut = False
 
     if cut:
+        if 'maps_cut_individually' in option:
+            if checkOption('maps_cut_individually'):
+                cutmap[0], cutmap[1], cutmap[2], cutmap[3] = mapattrNetCDF(name)
         if turn_latitude:
             mapnp = mapnp[cutmap[2]:cutmap[3], cutmap[0]:cutmap[1]]
         else:
@@ -1234,6 +1240,33 @@ def readnetcdfWithoutTime(name, value="None"):
         checkmap(value, filename, mapnp, True, True, mapC)
     return mapC
 
+def readnetcdf12month(name, month,value="None"):
+    """
+    load maps in netcdf format (12 maps for each month)
+
+    :param namebinding: file name in settings file
+    :month number: of month from 0 to 11
+    :param value: (optional) netcdf variable name. If not given -> last variable is taken
+    :return: Compressed 1D array of netcdf stored data
+    """
+
+    filename =  os.path.normpath(name)
+
+    try:
+       nf1 = Dataset(filename, 'r')
+    except:
+        msg = "Error 213: Netcdf map stacks: \n"
+        raise CWATMFileError(filename,msg)
+    if value == "None":
+        value = list(nf1.variables.items())[-1][0]  # get the last variable name
+
+    mapnp = nf1.variables[value][month,cutmap[2]:cutmap[3], cutmap[0]:cutmap[1]].astype(np.float64)
+    nf1.close()
+
+    mapC = compressArray(mapnp, name=filename)
+    if Flags['check']:
+        checkmap(value, filename, mapnp, True, True, mapC)
+    return mapC
 
 
 def readnetcdfInitial(name, value,default = 0.0):
@@ -1263,12 +1296,16 @@ def readnetcdfInitial(name, value,default = 0.0):
             if 'x' in nf1.variables.keys():
                 maskmapAttr['coordx'] = 'x'
                 maskmapAttr['coordy'] = 'y'
+            
+            cut0, cut1, cut2, cut3 = mapattrNetCDF(filename, check=False)
 
             if (nf1.variables[maskmapAttr['coordy']][0] - nf1.variables[maskmapAttr['coordy']][-1]) < 0:
                 msg = "Error 112: Latitude is in wrong order\n"
                 raise CWATMFileError(filename, msg)
 
-            mapnp = (nf1.variables[value][:].astype(np.float64))
+            #mapnp = (nf1.variables[value][:].astype(np.float64))
+            mapnp = nf1.variables[value][cut2:cut3, cut0:cut1].astype(np.float64)
+            
             nf1.close()
             mapC = compressArray(mapnp, name=filename)
             if Flags['check']:
@@ -1293,7 +1330,7 @@ def readnetcdfInitial(name, value,default = 0.0):
 
 # --------------------------------------------------------------------------------------------
 
-def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, flag,flagTime, nrdays=None, dateunit="days"):
+def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, flag,flagTime, nrdays=None, dateunit="days",netcdfindex=False):
     """
     write a netcdf stack
 
@@ -1332,6 +1369,10 @@ def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, fl
     # create real varname with variable name + time depending name e.g. discharge + monthavg
     varname = prename + addname
 
+    # save only index values:
+    if netcdfindex:
+        netfile = netfile.split(".")[0] + "_index.nc"
+
     if not flag:
         nf1 = Dataset(netfile, 'w', format='NETCDF4')
 
@@ -1346,10 +1387,11 @@ def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, fl
         nf1.title = cbinding ("title")
         nf1.source = 'CWATM output maps'
         nf1.Conventions = 'CF-1.6'
-        if 'save_git' in option:
-            if checkOption("save_git"):
-                import git
-                nf1.git_commit = git.Repo(search_parent_directories=True).head.object.hexsha
+        try:
+            import git
+            nf1.git_commit = git.Repo(search_parent_directories=True).head.object.hexsha
+        except:
+            ii =1
 
         # put the additional genaral meta data information from the xml file into the netcdf file
         # infomation from the settingsfile comes first
@@ -1373,6 +1415,7 @@ def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, fl
                 exec('%s="%s"' % ("latitude." + i, metadataNCDF['modflow_y'][i]))
 
         else:
+
             latlon = True
             if 'x' in list(metadataNCDF.keys()):
                 lon = nf1.createDimension('x', col)  # x 1000
@@ -1408,6 +1451,7 @@ def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, fl
                     latitude = nf1.createVariable('lat', 'f8', 'lat')
                     for i in metadataNCDF['lat']:
                         exec('%s="%s"' % ("latitude." + i, metadataNCDF['lat'][i]))
+
         # projection
         if 'laea' in list(metadataNCDF.keys()):
             proj = nf1.createVariable('laea', 'i4')
@@ -1451,9 +1495,10 @@ def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, fl
             nf1.createDimension('time', nrdays)
             time = nf1.createVariable('time', 'f8', 'time')
             time.standard_name = 'time'
-            if dateunit == "days": time.units = 'Days since ' + yearstr + '-01-01'
-            if dateunit == "months": time.units = 'Months since ' + yearstr + '-01-01'
-            if dateunit == "years": time.units = 'Years since ' + yearstr + '-01-01'
+            time.units = 'Days since ' + yearstr + '-01-01'
+            #if dateunit == "days": time.units = 'Days since ' + yearstr + '-01-01'
+            #if dateunit == "months": time.units = 'Months since ' + yearstr + '-01-01'
+            #if dateunit == "years": time.units = 'Years since ' + yearstr + '-01-01'
             #time.calendar = 'standard'
             time.calendar = dateVar['calendar']
 
@@ -1471,9 +1516,23 @@ def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, fl
                     value = nf1.createVariable(varname, 'f4', ('time', 'y', 'x'), zlib=True, fill_value=1e20,
                                                chunksizes=(1, row, col))
                 if latlon:
-                    if 'lon' in list(metadataNCDF.keys()):
-                        #value = nf1.createVariable(varname, 'f4', ('time', 'lat', 'lon'), zlib=True, fill_value=1e20)
-                        value = nf1.createVariable(varname, 'f4', ('time', 'lat', 'lon'), zlib=True, fill_value=1e20,chunksizes=(1,row,col))
+                    if netcdfindex:
+                        size = maskinfo['mapC'][0]
+                        sizeall = len(maskinfo['maskflat'].data)
+                        index = nf1.createDimension('index', size)
+                        index1 = nf1.createVariable('index', 'i4', 'index')
+                        indexlatlon = nf1.createDimension('indexlatlon', sizeall)
+                        indexlatlon1 = nf1.createVariable('indexlatlon', 'i4', 'indexlatlon')
+                        index1[:] = np.arange(size)
+                        indexlatlon1[:] = np.arange(sizeall)
+                        latlon = nf1.createVariable("latlon", 'i1', ('indexlatlon'))
+                        latlon[:] = maskinfo['maskflat'].data
+                        value = nf1.createVariable(varname, 'f4', ('time', 'index'), zlib=True, fill_value=1e20, chunksizes=(1, size))
+
+                    else:
+                        if 'lon' in list(metadataNCDF.keys()):
+                            #value = nf1.createVariable(varname, 'f4', ('time', 'lat', 'lon'), zlib=True, fill_value=1e20)
+                            value = nf1.createVariable(varname, 'f4', ('time', 'lat', 'lon'), zlib=True, fill_value=1e20,chunksizes=(1,row,col))
         else:
           if modflow:
               value = nf1.createVariable(varname, 'f4', ('y', 'x'), zlib=True, fill_value=1e20)
@@ -1486,9 +1545,23 @@ def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, fl
                   latlon = False
                   value = nf1.createVariable(varname, 'f4', ('y', 'x'), zlib=True,fill_value=1e20)
               if latlon:
-                  if 'lon' in list(metadataNCDF.keys()):
-                     # for world lat/lon coordinates
-                     value = nf1.createVariable(varname, 'f4', ('lat', 'lon'), zlib=True, fill_value=1e20)
+                  if netcdfindex:
+                      size = maskinfo['mapC'][0]
+                      sizeall = len(maskinfo['maskflat'].data)
+                      index = nf1.createDimension('index', size)
+                      index1 = nf1.createVariable('index', 'i4', 'index')
+                      indexlatlon = nf1.createDimension('indexlatlon', sizeall)
+                      indexlatlon1 = nf1.createVariable('indexlatlon', 'i4', 'indexlatlon')
+                      index1[:] = np.arange(size)
+                      indexlatlon1[:] = np.arange(sizeall)
+                      latlon = nf1.createVariable("latlon", 'i1', ('indexlatlon'))
+                      latlon[:] = maskinfo['maskflat'].data
+                      value = nf1.createVariable(varname, 'f4', ('index'), zlib=True, fill_value=1e20)
+                  else:
+                      if 'lon' in list(metadataNCDF.keys()):
+                         # for world lat/lon coordinates
+                         value = nf1.createVariable(varname, 'f4', ('lat', 'lon'), zlib=True, fill_value=1e20)
+
         value.standard_name = getmeta("standard_name",prename,varname)
         p1 = getmeta("long_name",prename,prename)
         p2 = getmeta("time", addname, addname)
@@ -1506,12 +1579,10 @@ def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, fl
 
     if flagTime:
         date_time = nf1.variables['time']
-        if dateunit == "days": nf1.variables['time'][posCnt-1] = date2num(timeStamp, date_time.units, date_time.calendar)
-        if dateunit == "months": nf1.variables['time'][posCnt - 1] = (timeStamp.year - 1901) * 12 + timeStamp.month - 1
-        if dateunit == "years":  nf1.variables['time'][posCnt - 1] = timeStamp.year - 1901
-
-        #nf1.variables['time'][posCnt - 1] = 60 + posCnt
-
+        # if dateunit is month or year then set date to the first days of the period
+        if dateunit == "months": timeStamp = timeStamp.replace(day=1)
+        if dateunit == "years": timeStamp = timeStamp.replace(day=1,month =1)
+        nf1.variables['time'][posCnt - 1] = date2num(timeStamp, date_time.units, date_time.calendar)
 
     mapnp = maskinfo['maskall'].copy()
 
@@ -1525,6 +1596,17 @@ def writenetcdf(netfile,prename,addname,varunits,inputmap, timeStamp, posCnt, fl
 
     if modflow:
         mapnp = inputmap
+    elif netcdfindex:
+        if flagTime:
+            nf1.variables[varname][posCnt - 1, :] = inputmap
+        else:
+            # without timeflag
+            nf1.variables[varname][:] = inputmap
+        nf1.close()
+        flag = True
+        return flag
+
+
     else:
         mapnp[~maskinfo['maskflat']] = inputmap[:]
         #mapnp = mapnp.reshape(maskinfo['shape']).data
@@ -1657,6 +1739,7 @@ def writeIniNetcdf(netfile,varlist, inputlist):
             if 'lon' in list(metadataNCDF.keys()):
                 # for world lat/lon coordinates
                 value = nf1.createVariable(varname, 'f8', ('lat', 'lon'), zlib=True, fill_value=1e20)
+
         value.standard_name= getmeta("standard_name",varname,varname)
         value.long_name= getmeta("long_name",varname,varname)
         value.units= getmeta("unit",varname,"undefined")

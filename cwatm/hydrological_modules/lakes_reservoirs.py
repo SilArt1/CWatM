@@ -20,7 +20,7 @@ class lakes_reservoirs(object):
 
     Note:
 
-        Calculate water retention in lakes and reservoirs
+        Calculate water retention in lakes and reservoirs 
 
         Using the **Modified Puls approach** to calculate retention of a lake
         See also: LISFLOOD manual Annex 3 (Burek et al. 2013)
@@ -50,7 +50,7 @@ class lakes_reservoirs(object):
 
         c: for a perfect weir with mu=0.577 and Poleni: :math:`{2 \\over{3}} \\mu * \\sqrt{2*g} = 1.7`
 
-        c: for a parabolic weir: around 1.8
+        c: for a parabolic weir: around 1.8 
 
         because it is a imperfect weir: :math:`C = c * 0.85 = 1.5`
 
@@ -127,7 +127,8 @@ class lakes_reservoirs(object):
     lakeOutflow                                                                                                    --   
     reservoirStorage                                                                                               --   
     MtoM3C                                 conversion factor from m to m3 (compressed map)                         --   
-    EvapWaterBodyM                         Evaporation from lakes and reservoirs                                   m    
+    EvapWaterBodyMOutlet                   Evaporation from lakes and reservoirs summed up at outlet               m
+    EvapWaterBodyM                         Evaporation from lakes and reservoirs                                   m
     lakeResInflowM                                                                                                 --   
     lakeResOutflowM                                                                                                --   
     lakedaycorrect                                                                                                 --   
@@ -425,7 +426,7 @@ class lakes_reservoirs(object):
             self.var.MtoM3C = np.compress(self.var.compress_LR, self.var.MtoM3)
 
             # init water balance [m]
-            self.var.EvapWaterBodyM = globals.inZero.copy()
+            self.var.EvapWaterBodyMOutlet = globals.inZero.copy()
             self.var.lakeResInflowM = globals.inZero.copy()
             self.var.lakeResOutflowM = globals.inZero.copy()
 
@@ -949,12 +950,28 @@ class lakes_reservoirs(object):
 
         # decompress to normal maskarea size waterbalance
         if self.var.noRoutingSteps == (NoRoutingExecuted + 1):
-            np.put(self.var.EvapWaterBodyM, self.var.decompress_LR, self.var.sumEvapWaterBodyC)
-            self.var.EvapWaterBodyM = self.var.EvapWaterBodyM / self.var.cellArea
+            np.put(self.var.EvapWaterBodyMOutlet, self.var.decompress_LR, self.var.sumEvapWaterBodyC)
+            self.var.EvapWaterBodyMOutlet = self.var.EvapWaterBodyMOutlet / self.var.cellArea
             np.put(self.var.lakeResInflowM, self.var.decompress_LR, self.var.sumlakeResInflow)
             self.var.lakeResInflowM = self.var.lakeResInflowM / self.var.cellArea
             np.put(self.var.lakeResOutflowM, self.var.decompress_LR, self.var.sumlakeResOutflow)
             self.var.lakeResOutflowM = self.var.lakeResOutflowM / self.var.cellArea
+
+            # --------------- correction PB May 2024
+            # calculate evaporation for each cell of the lake
+            # each lake cell fraction of the total lake area
+            # a lake cell has at minimum 5% water
+            fracwatermin = np.where(self.var.waterBodyID > 0, np.maximum(self.var.fracVegCover[5],0.05),0)
+            wlakefracsum = npareatotal(fracwatermin, self.var.waterBodyID)
+            # -> part of each cell of the total lake -> sum for each lake = 1
+            wlakefrac = divideValues(self.var.fracVegCover[5], wlakefracsum)
+            # all lake id cells get the evaporation of the outlet cell
+            ebody = npareatotal(self.var.EvapWaterBodyMOutlet, self.var.waterBodyID)
+            # 3) step evoporation is distributed by the water frac of each lake
+            self.var.EvapWaterBodyM = ebody * wlakefrac
+            self.var.EvapWaterBodyM[np.isnan(self.var.EvapWaterBodyM)] = 0.
+
+
 
             # Output maps for lakeResInflow and lakeResOutflow when using type-4 res.
             # The standard map inflate the overall res. water volumes
@@ -1004,7 +1021,7 @@ class lakes_reservoirs(object):
         if checkOption('calcWaterBalance'):
             self.model.waterbalance_module.waterBalanceCheck(
                 [self.var.lakeResInflowM],  # In
-                [self.var.lakeResOutflowM, self.var.EvapWaterBodyM],  # Out  self.var.evapWaterBodyC
+                [self.var.lakeResOutflowM, self.var.EvapWaterBodyMOutlet],  # Out  self.var.evapWaterBodyC
                 [self.var.prelakeResStorage / self.var.cellArea],  # prev storage
                 [self.var.lakeResStorage / self.var.cellArea],
                 "lake3", False)
