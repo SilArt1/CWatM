@@ -1,6 +1,6 @@
 [DEFAULT]
-Root = C:\GitHub\CWatM\Toolkit
-RootPC = C:\GitHub\CWatM\Toolkit
+Root = /Users/admin/Documents/GitHub/CWatM/Toolkit
+RootPC = /Users/admin/Documents/GitHub/CWatM/Toolkit
 Rootbasin = Calibration
 
 # start date of simulation outputs
@@ -18,7 +18,12 @@ ParamRanges = ParamRanges.csv
 
 [Templates]
 ModelSettings = settings_CWatM_template.ini
+
+# for Windows use runpy.bat
 RunModel = runpy.bat
+
+# for Linux and Mac use runpy.sh
+#RunModel = runpy.sh
 
 [Option]
 # Sets initial parameter values according to the para_first array
