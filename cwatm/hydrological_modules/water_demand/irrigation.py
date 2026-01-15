@@ -9,7 +9,7 @@
 # -------------------------------------------------------------------------
 
 from cwatm.management_modules import globals
-from cwatm.management_modules.data_handling import returnBool, binding, cbinding, loadmap
+from cwatm.management_modules.data_handling import *
 import numpy as np
 
 
@@ -100,7 +100,12 @@ class waterdemand_irrigation:
         self.var.unmetDemand_runningSum = self.var.load_initial('unmetDemand_runningSum', default=globals.inZero.copy())        # irrigation efficiency
         # at the moment a single map, but will be replaced by map stack for every year
         self.var.efficiencyPaddy = loadmap("irrPaddy_efficiency")
-        self.var.efficiencyNonpaddy = loadmap("irrNonPaddy_efficiency")
+        try:
+            self.var.efficiencyNonpaddy = loadmap("irrNonPaddy_efficiency")
+        except:
+            self.var.efficiencyNonpaddy = readnetcdf2("irrNonPaddy_efficiency", dateVar['currDate'],
+                                                  'yearly',
+                                                  value='irrigation_efficiency')
         self.var.returnfractionIrr = loadmap("irrigation_returnfraction")
 
         # for Xiaogang's agent model

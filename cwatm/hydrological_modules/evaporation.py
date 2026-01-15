@@ -224,13 +224,16 @@ class evaporation(object):
                         except:
 
                             self.var.fracCrops_IrrLandDemand[i] = readnetcdf2(self.var.Crops_names[i] + '_Irr', dateVar['currDate'],
-                                                                  'yearly',
-                                                                  value=re.split(r'[^a-zA-Z0-9_[\]]', cbinding(self.var.Crops_names[i] + '_Irr'))[-2])
+                                                            'yearly',
+                                                            #value=re.split(r'[^a-zA-Z0-9_[\]]', cbinding(self.var.Crops_names[i] + '_Irr'))[-2])
+                                                            value='cropfraction')
 
 
                             self.var.fracCrops_nonIrrLandDemand[i] = readnetcdf2(self.var.Crops_names[i] + '_nonIrr', dateVar['currDate'],
                                                                   'yearly',
-                                                                  value=re.split(r'[^a-zA-Z0-9_[\]]', cbinding(self.var.Crops_names[i] + '_nonIrr'))[-2])
+                                                                  value='cropfraction') 
+                                                                  #value=re.split(r'[^a-zA-Z0-9_[\]]', cbinding(self.var.Crops_names[i] + '_nonIrr'))[-2])
+                            
 
                         # in two places
                         if 'crops_leftoverNotIrrigated' in binding:
