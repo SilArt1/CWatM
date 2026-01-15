@@ -105,7 +105,7 @@ class waterdemand_irrigation:
         except:
             self.var.efficiencyNonpaddy = readnetcdf2("irrNonPaddy_efficiency", dateVar['currDate'],
                                                   'yearly',
-                                                  value='irrigation_efficiency')
+                                                  value='irrNonPaddy_efficiency')
         self.var.returnfractionIrr = loadmap("irrigation_returnfraction")
 
         # for Xiaogang's agent model
